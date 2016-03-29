@@ -35,14 +35,14 @@ context 'Multi Process' do
     end
   end
 
-  test 'focus concurrent shutdowns and startups do not corrupt the schedule' do
+  test 'concurrent shutdowns and startups do not corrupt the schedule' do
     counts = []
     children = []
 
     processes = 100
 
     schedules = {}
-    schedule_count = 1000
+    schedule_count = 300
     schedule_count.times do |n|
       schedules["job_#{n}"] = { 'cron' => '0 1 0 0 0' }
     end

@@ -84,15 +84,15 @@ module Resque
       end
 
       # reloads the schedule from redis
-      def reload_schedule!(verify_with: nil, max_retries: 7)
-        retries = 0
+      def reload_schedule!(verify_with: nil, max_retries: 8)
+        (1..max_retries).each do |tries|
+          this_schedule = all_schedules
 
-        @schedule = all_schedules
-        while verify_with && retries < max_retries &&
-              !(@schedule && @schedule.eql?(verify_with))
-          @schedule = all_schedules
-          retries += 1
-          sleep 2**(retries - rand + 1) * 0.1 unless @schedule
+          if this_schedule && !this_schedule.empty?
+            return @schedule = this_schedule
+          end
+
+          sleep 0.05 * (2**(tries - rand))
         end
       end
 
