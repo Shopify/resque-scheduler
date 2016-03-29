@@ -43,14 +43,34 @@ module Resque
       # params is an array, each element in the array is passed as a separate
       # param, otherwise params is passed in as the only parameter to
       # perform.
-      def schedule=(schedule_hash)
-        # This operation tries to be as atomic as possible.
-        # It needs to read the existing schedules outside the transaction.
-        # Unlikely, but this could still cause a race condition.
-        #
-        # A more robust solution would be to SCRIPT it, but that would change
-        # the required version of Redis.
 
+      def schedule=(schedule_hash)
+        retries = 0
+        this_schedule = with_startup_watch { setup_schedule(schedule_hash) }
+        while !this_schedule && retries < 15
+          this_schedule = with_startup_watch { setup_schedule(schedule_hash) }
+          retries += 1
+          sleep(2 ** (retries + rand - 1) * 0.02) unless this_schedule
+        end
+        this_schedule
+      end
+
+      def with_startup_watch
+        redis.watch(:starting)
+        if redis.exists(:starting)
+          return false
+        end
+        redis.setex(:starting, 60, true)
+        redis.unwatch
+
+        begin
+          yield
+        ensure
+          redis.del(:starting)
+        end
+      end
+
+      def setup_schedule(schedule_hash)
         # select schedules to remove
         if redis.exists(:schedules)
           clean_keys = non_persistent_schedules
@@ -74,7 +94,11 @@ module Resque
         end
 
         # ensure only return the successfully saved data!
+        # this could be a race condition while other instances
+        # are shutting down, so we use a lock for startup
+        # see #with_startup_watch
         reload_schedule!
+        schedule
       end
 
       # Returns the schedule hash
@@ -101,8 +125,10 @@ module Resque
 
       # clean the schedules as it exists in redis, useful for first setup?
       def clean_schedules(keys = non_persistent_schedules)
-        keys.each do |key|
-          remove_schedule(key)
+        redis.multi do
+          keys.each do |key|
+            remove_schedule(key)
+          end
         end
         @schedule = nil
         true
