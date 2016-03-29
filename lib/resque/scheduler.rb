@@ -339,13 +339,14 @@ module Resque
             sleep(remaining_sleep)
             handle_signals
           rescue Interrupt
-            if @shutdown
-              Resque.clean_schedules
-              release_master_lock
-            end
+            before_shutdown if @shutdown
             break
           end
         end
+      end
+
+      def before_shutdown
+        release_master_lock
       end
 
       # Sets the shutdown flag, clean schedules and exits if sleeping
