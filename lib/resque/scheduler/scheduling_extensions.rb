@@ -74,7 +74,7 @@ module Resque
         end
 
         # ensure only return the successfully saved data!
-        reload_schedule!
+        reload_schedule!(verify_with: schedule_hash)
       end
 
       # Returns the schedule hash
@@ -84,8 +84,16 @@ module Resque
       end
 
       # reloads the schedule from redis
-      def reload_schedule!
-        @schedule = all_schedules
+      def reload_schedule!(verify_with: nil, max_retries: 8)
+        (1..max_retries).each do |tries|
+          this_schedule = all_schedules
+
+          if this_schedule && !this_schedule.empty?
+            return @schedule = this_schedule
+          end
+
+          sleep 0.05 * (2**(tries - rand))
+        end
       end
 
       # gets the schedules as it exists in redis
@@ -101,8 +109,10 @@ module Resque
 
       # clean the schedules as it exists in redis, useful for first setup?
       def clean_schedules(keys = non_persistent_schedules)
-        keys.each do |key|
-          remove_schedule(key)
+        redis.multi do
+          keys.each do |key|
+            remove_schedule(key)
+          end
         end
         @schedule = nil
         true
