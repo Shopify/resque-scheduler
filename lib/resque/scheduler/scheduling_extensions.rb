@@ -44,6 +44,16 @@ module Resque
       # param, otherwise params is passed in as the only parameter to
       # perform.
       def schedule=(schedule_hash)
+        if supports_lua?
+          setup_schedule(schedule_hash)
+        else
+          Resque.logger.warn!('setup_schedule! can cause a race condition, ' \
+            'it is recommended to upgrade your Redis version so that it supports lua SCRIPT')
+          setup_schedule!(schedule_hash)
+        end
+      end
+
+      def setup_schedule!(schedule_hash)
         # This operation tries to be as atomic as possible.
         # It needs to read the existing schedules outside the transaction.
         # Unlikely, but this could still cause a race condition.
@@ -77,6 +87,21 @@ module Resque
         reload_schedule!
       end
 
+      def setup_schedule(schedule_hash)
+        schedule = {}
+
+        Resque.redis.evalsha(
+          startup_sha,
+          keys: [:schedules, :persisted_schedules, :schedules_changed],
+          argv: prepare_lua_schedule(schedule_hash)
+        ).each_slice(2) do |name, config|
+          schedule[name] = decode(config)
+        end
+
+        # ensure only return the successfully saved data!
+        reload_schedule!(with: schedule)
+      end
+
       # Returns the schedule hash
       def schedule
         @schedule ||= all_schedules
@@ -84,8 +109,8 @@ module Resque
       end
 
       # reloads the schedule from redis
-      def reload_schedule!
-        @schedule = all_schedules
+      def reload_schedule!(with: nil)
+        @schedule = with ? with : all_schedules
       end
 
       # gets the schedules as it exists in redis
@@ -148,6 +173,80 @@ module Resque
       end
 
       private
+
+      def supports_lua?
+        redis_master_version >= 2.5
+      end
+
+      def redis_master_version
+        Resque.redis.info['redis_version'].to_f
+      end
+
+      def startup_sha(refresh = false)
+        @startup_sha = nil if refresh
+
+        @startup_sha ||=
+          Resque.redis.script(:load, <<-EOF.gsub(/^ {14}/, ''))
+            -- KEYS
+            -- 1: schedules
+            -- 2: persisted_schedules
+            -- 3: schedules_changed
+            -------------------------
+            -- ARGV
+            -- i:   schedule_name
+            -- i+1: encoded_schedule_config
+            -- i+2: is_schedule_persisted?
+
+            local remove_schedule = function(schedule)
+              redis.call("HDEL", KEYS[1], schedule)
+              redis.call("SREM", KEYS[2], schedule)
+              redis.call("SADD", KEYS[3], schedule)
+            end
+
+            local get_non_persistent_schedules = function()
+              local all_schedules = redis.call("HKEYS", KEYS[1])
+              local non_persistent_schedules = {}
+              for _,schedule in ipairs(all_schedules) do
+                local schedule_is_persisted = redis.call("SISMEMBER", KEYS[2], schedule)
+                if schedule_is_persisted == 0 then
+                  table.insert(non_persistent_schedules, schedule)
+                end
+              end
+              return non_persistent_schedules
+            end
+
+            local set_schedule = function(name, config, persisted)
+              redis.call("HSET", KEYS[1], name, config)
+              redis.call("SADD", KEYS[3], name)
+              if persisted == "true" then
+                redis.call("HSET", KEYS[1], name, config)
+              end
+            end
+
+            local non_persistent_schedules = get_non_persistent_schedules()
+            local prepared_schedules = ARGV[1]
+
+            for _,schedule in ipairs(non_persistent_schedules) do
+              remove_schedule(schedule)
+            end
+
+            for index=1,#ARGV,3 do
+             set_schedule(ARGV[index], ARGV[index+1], ARGV[index+2])
+            end
+
+            return redis.call("HGETALL", KEYS[1])
+          EOF
+      end
+
+      def prepare_lua_schedule(schedule_hash)
+        prepared_schedule = prepare_schedule(schedule_hash)
+        res = []
+        prepared_schedule.each do |name, config|
+          persist = config.delete(:persist) || config.delete('persist')
+          res << name << encode(config) << !persist.nil?
+        end
+        res
+      end
 
       def prepare_schedule(schedule_hash)
         prepared_hash = {}
