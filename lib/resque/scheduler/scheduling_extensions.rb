@@ -187,28 +187,22 @@ module Resque
 
         @startup_sha ||=
           Resque.redis.script(:load, <<-EOF.gsub(/^ {14}/, ''))
-            -- KEYS
-            -- 1: schedules
-            -- 2: persisted_schedules
-            -- 3: schedules_changed
-            -------------------------
-            -- ARGV
-            -- i:   schedule_name
-            -- i+1: encoded_schedule_config
-            -- i+2: is_schedule_persisted?
+            local schedules_key = KEYS[1]
+            local persisted_schedules_key = KEYS[2]
+            local changed_schedules_key = KEYS[3]
 
             local remove_schedule = function(schedule)
-              redis.call("HDEL", KEYS[1], schedule)
-              redis.call("SREM", KEYS[2], schedule)
-              redis.call("SADD", KEYS[3], schedule)
+              redis.call("HDEL", schedules_key, schedule)
+              redis.call("SREM", persisted_schedules_key, schedule)
+              redis.call("SADD", changed_schedules_key, schedule)
             end
 
             local get_non_persistent_schedules = function()
-              local all_schedules = redis.call("HKEYS", KEYS[1])
+              local all_schedules = redis.call("HKEYS", schedules_key)
               local non_persistent_schedules = {}
               for _,schedule in ipairs(all_schedules) do
                 local schedule_is_persisted = \
-                  redis.call("SISMEMBER", KEYS[2], schedule)
+                  redis.call("SISMEMBER", persisted_schedules_key, schedule)
                 if schedule_is_persisted == 0 then
                   table.insert(non_persistent_schedules, schedule)
                 end
@@ -217,25 +211,27 @@ module Resque
             end
 
             local set_schedule = function(name, config, persisted)
-              redis.call("HSET", KEYS[1], name, config)
-              redis.call("SADD", KEYS[3], name)
+              redis.call("HSET", schedules_key, name, config)
+              redis.call("SADD", changed_schedules_key, name)
               if persisted == "true" then
-                redis.call("HSET", KEYS[1], name, config)
+                redis.call("SADD", persisted_schedules_key, name, config)
               end
             end
 
             local non_persistent_schedules = get_non_persistent_schedules()
-            local prepared_schedules = ARGV[1]
 
             for _,schedule in ipairs(non_persistent_schedules) do
               remove_schedule(schedule)
             end
 
+            -- i:   schedule_name
+            -- i+1: encoded_schedule_config
+            -- i+2: is_schedule_persisted?
             for index=1,#ARGV,3 do
              set_schedule(ARGV[index], ARGV[index+1], ARGV[index+2])
             end
 
-            return redis.call("HGETALL", KEYS[1])
+            return redis.call("HGETALL", schedules_key)
           EOF
       end
 

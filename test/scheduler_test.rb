@@ -420,6 +420,9 @@ context 'Resque::Scheduler' do
     Resque.schedule = {
       'a_schedule' => {
         'cron' => '* * * * *', 'class' => 'SomeOtherJob', 'args' => '/tmp'
+      },
+      'a_persisted_schedule' => {
+        'cron' => '* * * * *', 'class' => 'SomeOtherJob', 'args' => '/tmp', 'persist' => 'true'
       }
     }
     Resque::Scheduler.load_schedule!
@@ -428,7 +431,9 @@ context 'Resque::Scheduler' do
       { 'cron' => '* * * * *', 'class' => 'SomeIvarJob', 'args' => '/tmp/2' },
       Resque.schedule['some_ivar_job']
     )
-    assert_equal(nil, Resque.schedule['some_job'])
+    assert_equal(nil, Resque.schedule['some_nonexistent_job'])
+    assert Resque.redis.sismember(:persisted_schedules, 'some_ivar_job')
+    assert Resque.redis.sismember(:persisted_schedules, 'a_persisted_schedule')
   end
 
   test 'adheres to lint' do
