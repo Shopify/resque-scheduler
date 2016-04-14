@@ -419,10 +419,15 @@ context 'Resque::Scheduler' do
 
     Resque.schedule = {
       'a_schedule' => {
-        'cron' => '* * * * *', 'class' => 'SomeOtherJob', 'args' => '/tmp'
+        'cron' => '* * * * *',
+        'class' => 'SomeOtherJob',
+        'args' => '/tmp'
       },
       'a_persisted_schedule' => {
-        'cron' => '* * * * *', 'class' => 'SomeOtherJob', 'args' => '/tmp', 'persist' => 'true'
+        'cron' => '* * * * *',
+        'class' => 'SomeOtherJob',
+        'args' => '/tmp',
+        'persist' => 'true'
       }
     }
     Resque::Scheduler.load_schedule!

@@ -8,6 +8,10 @@ module Resque
       # Scheduler.  refer to:
       # https://github.com/resque/resque-scheduler/pull/273
 
+      def self.supports_lua?
+        redis_master_version >= 2.5
+      end
+
       def self.constantize(camel_cased_word)
         camel_cased_word = camel_cased_word.to_s
 
@@ -33,6 +37,10 @@ module Resque
 
       def self.classify(dashed_word)
         dashed_word.split('-').map(&:capitalize).join
+      end
+
+      def self.redis_master_version
+        Resque.redis.info['redis_version'].to_f
       end
     end
   end
