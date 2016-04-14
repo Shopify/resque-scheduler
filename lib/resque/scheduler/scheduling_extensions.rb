@@ -124,14 +124,16 @@ module Resque
       private
 
       def fallback_setup_schedule(schedule_hash)
-        Resque.logger.warn!("You are running Redis version
-                            #{redis_master_version}. Redis version 2.6 is
-                            required to run Lua scripts to atomically set up
-                            the schedule. resque-scheduler will use the pre 2.6
-                            behaviour which can cause a race condition that
-                            will result in an empty schedule. It is highly
-                            recommended to upgrade Redis for production
-                            workloads.")
+        warn(<<-EOF.gsub(/^\s+/, '').gsub(/\n/, ' '))
+          You are running Redis version
+          #{Resque::Scheduler::Util.redis_master_version}. Redis version 2.6 is
+          required to run Lua scripts to atomically set up
+          the schedule. resque-scheduler will use the pre 2.6
+          behaviour which can cause a race condition that
+          will result in an empty schedule. It is highly
+          recommended to upgrade Redis for production
+          workloads
+        EOF
         # This operation tries to be as atomic as possible.
         # It needs to read the existing schedules outside the transaction.
         # Unlikely, but this could still cause a race condition.
@@ -233,13 +235,10 @@ module Resque
       end
 
       def prepare_lua_schedule(schedule_hash)
-        prepared_schedule = prepare_schedule(schedule_hash)
-        res = []
-        prepared_schedule.each do |name, config|
+        prepare_schedule(schedule_hash).map do |name, config|
           persist = config.delete(:persist) || config.delete('persist')
-          res << name << encode(config) << !persist.nil?
-        end
-        res
+          [name, encode(config), persist]
+        end.flatten
       end
 
       def prepare_schedule(schedule_hash)

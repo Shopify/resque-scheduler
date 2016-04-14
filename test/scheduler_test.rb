@@ -317,6 +317,27 @@ context 'Resque::Scheduler' do
     )
   end
 
+  test 'should warn on fallback schedule= method for <= Redis 2.4' do
+    $stderr = StringIO.new
+
+    Resque.redis.stubs(:info).returns('redis_version' => '2.4.x')
+    Resque.schedule = {}
+
+    assert $stderr.string =~ /highly recommended/
+  end
+
+  test 'should use fallback schedule= method for <= Redis 2.4' do
+    Resque.redis.stubs(:info).returns('redis_version' => '2.4.x')
+    Resque.expects(:fallback_setup_schedule)
+    Resque.schedule = {}
+  end
+
+  test 'should use atomic schedule= method for > Redis 2.4' do
+    Resque.redis.stubs(:info).returns('redis_version' => '2.5.x')
+    Resque.expects(:atomic_setup_schedule)
+    Resque.schedule = {}
+  end
+
   test 'schedule= removes schedules not present in the given ' \
        'schedule argument' do
     Resque::Scheduler.dynamic = true
