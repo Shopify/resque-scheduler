@@ -58,10 +58,6 @@ module Resque
         @master_lock ||= build_master_lock
       end
 
-      def supports_lua?
-        redis_master_version >= 2.5
-      end
-
       def master?
         master_lock.acquire! || master_lock.locked?
       end
@@ -81,7 +77,7 @@ module Resque
       private
 
       def build_master_lock
-        if supports_lua?
+        if Resque::Scheduler::Util.supports_lua?
           Resque::Scheduler::Lock::Resilient.new(master_lock_key)
         else
           Resque::Scheduler::Lock::Basic.new(master_lock_key)
@@ -92,10 +88,6 @@ module Resque
         lock_prefix = ENV['RESQUE_SCHEDULER_MASTER_LOCK_PREFIX'] || ''
         lock_prefix += ':' if lock_prefix != ''
         "#{Resque.redis.namespace}:#{lock_prefix}resque_scheduler_master_lock"
-      end
-
-      def redis_master_version
-        Resque.redis.info['redis_version'].to_f
       end
     end
   end

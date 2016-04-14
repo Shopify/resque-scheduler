@@ -3,30 +3,28 @@ require_relative 'test_helper'
 
 context 'Multi Process' do
   test 'setting schedule= from many process does not corrupt the schedules' do
-    schedules = {}
+    schedules_1 = {}
+    schedules_2 = {}
     counts = []
     pids = []
 
     # This number may need to be increased if this test is not failing
-    processes = 20
+    processes = 100
 
-    schedule_count = 200
+    schedule_count = 300
 
     schedule_count.times do |n|
-      schedules["job #{n}"] = { cron: '0 1 0 0 0' }
+      schedules_1["1_job_#{n}"] = { cron: '0 1 0 0 0' }
+      schedules_2["2_job_#{n}"] = { cron: '0 1 0 0 0' }
     end
 
     processes.times do |n|
       pids << fork_with_marshalled_pipe_and_result do
         sleep n * 0.1
-        Resque.schedule = schedules
+        Resque.schedule = n.even? ? schedules_2 : schedules_1
         Resque.schedule.size
       end
     end
-
-    # doing this outside the threads increases the odds of failure
-    Resque.schedule = schedules
-    counts << Resque.schedule.size
 
     counts += get_results_from_children(pids)
 

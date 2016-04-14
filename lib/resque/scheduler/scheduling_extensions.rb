@@ -44,37 +44,11 @@ module Resque
       # param, otherwise params is passed in as the only parameter to
       # perform.
       def schedule=(schedule_hash)
-        # This operation tries to be as atomic as possible.
-        # It needs to read the existing schedules outside the transaction.
-        # Unlikely, but this could still cause a race condition.
-        #
-        # A more robust solution would be to SCRIPT it, but that would change
-        # the required version of Redis.
-
-        # select schedules to remove
-        if redis.exists(:schedules)
-          clean_keys = non_persistent_schedules
+        if Resque::Scheduler::Util.supports_lua?
+          atomic_setup_schedule(schedule_hash)
         else
-          clean_keys = []
+          fallback_setup_schedule(schedule_hash)
         end
-
-        # Start the transaction. If this is not atomic and more than one
-        # process is calling `schedule=` the clean_schedules might overlap a
-        # set_schedule and cause the schedules to become corrupt.
-        redis.multi do
-          clean_schedules(clean_keys)
-
-          schedule_hash = prepare_schedule(schedule_hash)
-
-          # store all schedules in redis, so we can retrieve them back
-          # everywhere.
-          schedule_hash.each do |name, job_spec|
-            set_schedule(name, job_spec)
-          end
-        end
-
-        # ensure only return the successfully saved data!
-        reload_schedule!
       end
 
       # Returns the schedule hash
@@ -148,6 +122,124 @@ module Resque
       end
 
       private
+
+      def fallback_setup_schedule(schedule_hash)
+        warn(<<-EOF.gsub(/^\s+/, '').gsub(/\n/, ' '))
+          You are running Redis version
+          #{Resque::Scheduler::Util.redis_master_version}. Redis version 2.6 is
+          required to run Lua scripts to atomically set up
+          the schedule. resque-scheduler will use the pre 2.6
+          behaviour which can cause a race condition that
+          will result in an empty schedule. It is highly
+          recommended to upgrade Redis for production
+          workloads
+        EOF
+        # This operation tries to be as atomic as possible.
+        # It needs to read the existing schedules outside the transaction.
+        # Unlikely, but this could still cause a race condition.
+        #
+        # A more robust solution would be to SCRIPT it, but that would change
+        # the required version of Redis.
+
+        # select schedules to remove
+        if redis.exists(:schedules)
+          clean_keys = non_persistent_schedules
+        else
+          clean_keys = []
+        end
+
+        # Start the transaction. If this is not atomic and more than one
+        # process is calling `schedule=` the clean_schedules might overlap a
+        # set_schedule and cause the schedules to become corrupt.
+        redis.multi do
+          clean_schedules(clean_keys)
+
+          schedule_hash = prepare_schedule(schedule_hash)
+
+          # store all schedules in redis, so we can retrieve them back
+          # everywhere.
+          schedule_hash.each do |name, job_spec|
+            set_schedule(name, job_spec)
+          end
+        end
+
+        # ensure only return the successfully saved data!
+        reload_schedule!
+      end
+
+      def atomic_setup_schedule(schedule_hash)
+        schedule = {}
+
+        Resque.redis.evalsha(
+          startup_sha,
+          keys: [:schedules, :persisted_schedules, :schedules_changed],
+          argv: prepare_lua_schedule(schedule_hash)
+        ).each_slice(2) do |name, config|
+          schedule[name] = decode(config)
+        end
+
+        @schedule = schedule
+      end
+
+      def startup_sha(refresh = false)
+        @startup_sha = nil if refresh
+
+        @startup_sha ||=
+          Resque.redis.script(:load, <<-EOF.gsub(/^ {14}/, ''))
+            local schedules_key = KEYS[1]
+            local persisted_schedules_key = KEYS[2]
+            local changed_schedules_key = KEYS[3]
+
+            local remove_schedule = function(schedule)
+              redis.call("HDEL", schedules_key, schedule)
+              redis.call("SREM", persisted_schedules_key, schedule)
+              redis.call("SADD", changed_schedules_key, schedule)
+            end
+
+            local get_non_persistent_schedules = function()
+              local all_schedules = redis.call("HKEYS", schedules_key)
+              local non_persistent_schedules = {}
+              for _,schedule in ipairs(all_schedules) do
+                local schedule_is_persisted = \
+                  redis.call("SISMEMBER", persisted_schedules_key, schedule)
+                if schedule_is_persisted == 0 then
+                  table.insert(non_persistent_schedules, schedule)
+                end
+              end
+              return non_persistent_schedules
+            end
+
+            local set_schedule = function(name, config, persisted)
+              redis.call("HSET", schedules_key, name, config)
+              redis.call("SADD", changed_schedules_key, name)
+              if persisted == "true" then
+                redis.call("SADD", persisted_schedules_key, name, config)
+              end
+            end
+
+            local non_persistent_schedules = get_non_persistent_schedules()
+
+            for _,schedule in ipairs(non_persistent_schedules) do
+              remove_schedule(schedule)
+            end
+
+            -- i:   schedule_name
+            -- i+1: encoded_schedule_config
+            -- i+2: is_schedule_persisted?
+            for index=1,#ARGV,3 do
+              set_schedule(ARGV[index], ARGV[index+1], ARGV[index+2])
+            end
+
+            return redis.call("HGETALL", schedules_key)
+          EOF
+      end
+
+      def prepare_lua_schedule(schedule_hash)
+        prepare_schedule(schedule_hash).map do |name, config|
+          persist = config.delete(:persist) || config.delete('persist')
+          [name, encode(config), persist]
+        end.flatten
+      end
 
       def prepare_schedule(schedule_hash)
         prepared_hash = {}

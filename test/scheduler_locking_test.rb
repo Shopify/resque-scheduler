@@ -204,7 +204,7 @@ end
 context 'Resque::Scheduler::Lock::Resilient' do
   include LockTestHelper
 
-  if !Resque::Scheduler.supports_lua?
+  if !Resque::Scheduler::Util.supports_lua?
     puts '*** Skipping Resque::Scheduler::Lock::Resilient ' \
          'tests, as they require Redis >= 2.5.'
   else

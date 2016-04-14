@@ -317,6 +317,27 @@ context 'Resque::Scheduler' do
     )
   end
 
+  test 'should warn on fallback schedule= method for <= Redis 2.4' do
+    $stderr = StringIO.new
+
+    Resque.redis.stubs(:info).returns('redis_version' => '2.4.x')
+    Resque.schedule = {}
+
+    assert $stderr.string =~ /highly recommended/
+  end
+
+  test 'should use fallback schedule= method for <= Redis 2.4' do
+    Resque.redis.stubs(:info).returns('redis_version' => '2.4.x')
+    Resque.expects(:fallback_setup_schedule)
+    Resque.schedule = {}
+  end
+
+  test 'should use atomic schedule= method for > Redis 2.4' do
+    Resque.redis.stubs(:info).returns('redis_version' => '2.5.x')
+    Resque.expects(:atomic_setup_schedule)
+    Resque.schedule = {}
+  end
+
   test 'schedule= removes schedules not present in the given ' \
        'schedule argument' do
     Resque::Scheduler.dynamic = true
@@ -419,7 +440,15 @@ context 'Resque::Scheduler' do
 
     Resque.schedule = {
       'a_schedule' => {
-        'cron' => '* * * * *', 'class' => 'SomeOtherJob', 'args' => '/tmp'
+        'cron' => '* * * * *',
+        'class' => 'SomeOtherJob',
+        'args' => '/tmp'
+      },
+      'a_persisted_schedule' => {
+        'cron' => '* * * * *',
+        'class' => 'SomeOtherJob',
+        'args' => '/tmp',
+        'persist' => 'true'
       }
     }
     Resque::Scheduler.load_schedule!
@@ -428,7 +457,9 @@ context 'Resque::Scheduler' do
       { 'cron' => '* * * * *', 'class' => 'SomeIvarJob', 'args' => '/tmp/2' },
       Resque.schedule['some_ivar_job']
     )
-    assert_equal(nil, Resque.schedule['some_job'])
+    assert_equal(nil, Resque.schedule['some_nonexistent_job'])
+    assert Resque.redis.sismember(:persisted_schedules, 'some_ivar_job')
+    assert Resque.redis.sismember(:persisted_schedules, 'a_persisted_schedule')
   end
 
   test 'adheres to lint' do
