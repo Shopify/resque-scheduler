@@ -6,7 +6,7 @@ module Resque
     module Lock
       class Resilient < Base
         def acquire!
-          evalsha(:acquire, [key], [value]).to_i == 1
+          Resque.redis.set(key, value, ex: timeout, nx: true)
         end
 
         def locked?
@@ -17,7 +17,6 @@ module Resque
           if locked?
             @timeout = seconds
             @locked_sha = nil
-            @acquire_sha = nil
           end
           @timeout
         end
@@ -55,21 +54,6 @@ module Resque
               end
 
               return 0
-            EOF
-        end
-
-        def acquire_sha(refresh = false)
-          @acquire_sha = nil if refresh
-
-          @acquire_sha ||=
-            Resque.redis.script(:load, <<-EOF.gsub(/^ {14}/, ''))
-              if redis.call('SETNX', KEYS[1], ARGV[1]) == 1
-              then
-                redis.call('EXPIRE', KEYS[1], #{timeout})
-                return 1
-              else
-                return 0
-              end
             EOF
         end
       end
