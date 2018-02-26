@@ -69,24 +69,10 @@ module Resque
       end
 
       def next_delayed_items(before:, count: 1)
-        items = evalsha(:zpop, [:delayed_queue], [0, before.to_i, 0, count])
+        items = Lua.zpop(:delayed_queue, 0, before.to_i, 0, count)
         items.map { |item| decode_without_nonce(item) }
       end
 
-      def zpop_sha(refresh = false)
-        @acquire_sha = nil if refresh
-
-        @acquire_sha ||=
-          Resque.redis.script(:load, <<-EOF.gsub(/^ {14}/, ''))
-            local items = redis.call('ZRANGEBYSCORE', KEYS[1], ARGV[1], ARGV[2], 'LIMIT', ARGV[3], ARGV[4])
-
-            for k, v in ipairs(items) do
-              redis.call('ZREM', KEYS[1], v)
-            end -- redis.call('ZREM', KEYS[1], unpack(items))
-
-            return items
-          EOF
-      end
 
       # Clears all jobs created with enqueue_at or enqueue_in
       def reset_delayed_queue
@@ -188,21 +174,6 @@ module Resque
         job_class = decoded_payload['class']
         relevant_class = (klass.nil? || klass.to_s == job_class)
         relevant_class && yield(decoded_payload['args'])
-      end
-
-      def evalsha(script, keys, argv, refresh: false)
-        sha_method_name = "#{script}_sha"
-        Resque.redis.evalsha(
-          send(sha_method_name, refresh),
-          keys: keys,
-          argv: argv
-        )
-      rescue Redis::CommandError => e
-        if e.message =~ /NOSCRIPT/
-          refresh = true
-          retry
-        end
-        raise
       end
 
       def plugin
