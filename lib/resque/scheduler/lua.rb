@@ -10,15 +10,15 @@ module Resque
       private
 
       def self.zpop_sha(refresh = false)
-        @acquire_sha = nil if refresh
+        @zpop_sha = nil if refresh
 
-        @acquire_sha ||=
+        @zpop_sha ||=
           Resque.redis.script(:load, <<-EOF.gsub(/^ {14}/, ''))
             local items = redis.call('ZRANGEBYSCORE', KEYS[1], ARGV[1], ARGV[2], 'LIMIT', ARGV[3], ARGV[4])
 
             for k, v in ipairs(items) do
               redis.call('ZREM', KEYS[1], v)
-            end -- redis.call('ZREM', KEYS[1], unpack(items))
+            end
 
             return items
           EOF

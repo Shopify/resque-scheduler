@@ -73,7 +73,6 @@ module Resque
         items.map { |item| decode_without_nonce(item) }
       end
 
-
       # Clears all jobs created with enqueue_at or enqueue_in
       def reset_delayed_queue
         redis.del :delayed_queue
