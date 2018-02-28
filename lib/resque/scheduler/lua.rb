@@ -3,6 +3,8 @@ module Resque
     module Lua
       extend self
 
+      LUA_SCRIPTS_PATH = File.join(File.dirname(__FILE__), 'lua')
+
       def self.zpop(key, *args)
         evalsha(:zpop, [key], args)
       end
@@ -11,17 +13,7 @@ module Resque
 
       def self.zpop_sha(refresh = false)
         @zpop_sha = nil if refresh
-
-        @zpop_sha ||=
-          Resque.redis.script(:load, <<-EOF.gsub(/^ {14}/, ''))
-            local items = redis.call('ZRANGEBYSCORE', KEYS[1], ARGV[1], ARGV[2], 'LIMIT', ARGV[3], ARGV[4])
-
-            for k, v in ipairs(items) do
-              redis.call('ZREM', KEYS[1], v)
-            end
-
-            return items
-          EOF
+        @zpop_sha ||= Resque.redis.script(:load, load_lua("zpop"))
       end
 
       def self.evalsha(script, keys, argv, refresh: false)
@@ -37,6 +29,10 @@ module Resque
           retry
         end
         raise
+      end
+
+      def load_lua(filename)
+        File.read(LUA_SCRIPTS_PATH + "/#{filename}.lua")
       end
     end
   end
