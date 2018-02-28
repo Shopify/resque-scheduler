@@ -69,7 +69,7 @@ module Resque
       end
 
       def next_delayed_items(before:, count: 1)
-        items = Lua.zpop(:delayed_queue, 0, before.to_i, 0, count)
+        items = Resque::Scheduler::Lua.zpop(:delayed_queue, 0, before.to_i, 0, count)
         items.map { |item| decode_without_nonce(item) }
       end
 

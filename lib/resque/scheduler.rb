@@ -6,6 +6,7 @@ require_relative 'scheduler/locking'
 require_relative 'scheduler/logger_builder'
 require_relative 'scheduler/signal_handling'
 require_relative 'scheduler/failure_handler'
+require_relative 'scheduler/lua'
 
 module Resque
   module Scheduler
