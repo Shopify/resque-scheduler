@@ -9,16 +9,19 @@ module Resque
         evalsha(:zpop, [key], [min, max, offset, count])
       end
 
+      def locked(lock_key, token, timeout)
+        evalsha(:locked, [lock_key], [token, timeout])
+      end
+
       private
 
-      def zpop_sha(refresh = false)
-        @zpop_sha = nil if refresh
-        @zpop_sha ||= Resque.redis.script(:load, load_lua("zpop"))
+      def get_sha(script, refresh = false)
+        sha_store[script] = nil if refresh
+        sha_store[script] ||= Resque.redis.script(:load, load_lua(script))
       end
 
       def evalsha(script, keys, argv, refresh: false)
-        sha_method_name = "#{script}_sha"
-        Resque.redis.evalsha(send(sha_method_name, refresh), keys: keys, argv: argv)
+        Resque.redis.evalsha(get_sha(script, refresh), keys: keys, argv: argv)
       rescue Redis::CommandError => e
         if e.message =~ /NOSCRIPT/
           refresh = true
@@ -29,6 +32,10 @@ module Resque
 
       def load_lua(filename)
         File.read(LUA_SCRIPTS_PATH + "/#{filename}.lua")
+      end
+
+      def sha_store
+        @sha_store ||= {}
       end
     end
   end

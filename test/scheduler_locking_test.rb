@@ -296,19 +296,5 @@ context 'Resque::Scheduler::Lock::Resilient' do
       @lock.timeout = 120
       assert_equal 100, @lock.timeout
     end
-
-    test 'setting lock timeout nils out lock script' do
-      @lock.acquire!
-      @lock.timeout = 100
-      assert_equal nil, @lock.instance_variable_get(:@locked_sha)
-    end
-
-    test 'setting lock timeout does not nil out lock script if not held' do
-      @lock.acquire!
-      @lock.locked?
-      @lock.stubs(:locked?).returns(false)
-      @lock.timeout = 100
-      assert_not_nil @lock.instance_variable_get(:@locked_sha)
-    end
   end
 end
