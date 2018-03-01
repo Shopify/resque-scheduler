@@ -69,8 +69,7 @@ module Resque
       end
 
       def next_delayed_items(before:, count: 1)
-        items = redis.zrangebyscore(:delayed_queue, 0.0, before.to_i, limit: [0, count], with_scores: false)
-        redis.zrem(:delayed_queue, items) unless items.empty?
+        items = Resque::Scheduler::Lua.zpop(:delayed_queue, 0, before.to_i, 0, count)
         items.map { |item| decode_without_nonce(item) }
       end
 
