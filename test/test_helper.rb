@@ -11,6 +11,8 @@ $LOAD_PATH.unshift File.dirname(File.expand_path(__FILE__)) + '/../lib'
 require 'resque-scheduler'
 require 'resque/scheduler/server'
 
+Dir[(File.expand_path(__dir__)) + '/test_helpers/*.rb'].each { |f| require f }
+
 ##
 # test/spec/mini 3
 # original work: http://gist.github.com/25455

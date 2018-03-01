@@ -59,10 +59,8 @@ module Resque
           # Now start the scheduling part of the loop.
           loop do
             begin
-              if master?
-                handle_delayed_items
-                update_schedule if dynamic
-              end
+              handle_delayed_items
+              update_schedule if dynamic && master?
             rescue Errno::EAGAIN, Errno::ECONNRESET, Redis::CannotConnectError => e
               log! e.message
               release_master_lock_if_master
@@ -179,22 +177,23 @@ module Resque
         at_time ||= Time.now
         procline 'Processing Delayed Items'
         items = []
-        master = false
+        enqueued = 0
 
         loop do
           handle_shutdown do
-            if (master = master?)
-              items = Resque.next_delayed_items(before: at_time, count: dequeue_batch_size)
+            items = Resque.next_delayed_items(before: at_time, count: dequeue_batch_size)
 
-              items.each do |item|
-                log "queuing #{item['class']} [delayed]"
-                enqueue(item)
-              end
+            items.each do |item|
+              log "queuing #{item['class']} [delayed]"
+              enqueue(item)
+              enqueued += 1
             end
           end
 
-          break if !master || items.empty?
+          break if items.empty?
         end
+
+        enqueued
       end
 
       def enqueue(config)

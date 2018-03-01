@@ -2,6 +2,8 @@
 require_relative 'test_helper'
 
 context 'DelayedQueue' do
+  include ForkingTestHelper
+
   setup do
     Resque::Scheduler.quiet = true
     Resque.redis.redis.flushall
@@ -107,6 +109,30 @@ context 'DelayedQueue' do
     Resque.enqueue_at(t, SomeIvarJob)
   end
 
+  test "multiple processes can safely handle delayed items" do
+    num_jobs = 5000
+    num_jobs.times do |i|
+      Resque.enqueue_at(Time.now + (i + 1), SomeIvarJob, job_number: i)
+    end
+
+    processes = 50
+    pids = []
+    jobs_enqueued = []
+
+    processes.times do
+      pids << fork_with_marshalled_pipe_and_result do
+        Resque::Scheduler.handle_delayed_items(Time.now + (num_jobs + 1))
+      end
+    end
+    jobs_enqueued += get_results_from_children(pids)
+
+    assert jobs_enqueued.all? { |enqueued| enqueued > 0 }
+    assert_equal num_jobs, Resque.redis.llen('queue:ivar')
+
+    actual_job_numbers = Resque.redis.lrange('queue:ivar', 0, -1).map { |job| Resque.decode(job)['args'][0]['job_number'] }.sort
+    assert_equal (0...num_jobs).to_a, actual_job_numbers
+  end
+
   test 'handle_delayed_items with items in the future' do
     t = Time.now + 60 # in the future
 
@@ -121,16 +147,14 @@ context 'DelayedQueue' do
   end
 
   test 'handle_delayed_items uses batch size of 10 by default' do
-    assert_equal 10, Resque::Scheduler.dequeue_batch_size
-
     13.times { Resque.enqueue_in_with_queue('ivar', 0, SomeIvarJob) }
 
-    # allow only one batch to get dequeued + enqueued
-    Resque::Scheduler.stubs(:master?).returns(true).then.returns(false)
+    t = Time.now + 60
 
-    Resque::Scheduler.handle_delayed_items
-
-    assert_equal 3, Resque.delayed_queue_schedule_size
+    Resque.expects(:next_delayed_items).with(before: t, count: Resque::Scheduler.dequeue_batch_size).throws(:batch_done)
+    catch(:batch_done) do
+      Resque::Scheduler.handle_delayed_items(t)
+    end
   end
 
   test 'calls klass#scheduled when enqueuing jobs if it exists' do
