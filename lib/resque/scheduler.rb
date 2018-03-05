@@ -65,7 +65,7 @@ module Resque
               end
             rescue Errno::EAGAIN, Errno::ECONNRESET, Redis::CannotConnectError => e
               log! e.message
-              release_master_lock
+              release_master_lock_if_master
             end
             poll_sleep
           end
@@ -361,7 +361,7 @@ module Resque
 
       def before_shutdown
         stop_rufus_scheduler
-        release_master_lock
+        release_master_lock_if_master
       end
 
       # Sets the shutdown flag, clean schedules and exits if sleeping

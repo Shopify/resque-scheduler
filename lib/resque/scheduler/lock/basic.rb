@@ -21,6 +21,11 @@ module Resque
 
           false
         end
+
+
+        def release_if_locked
+          locked? && release!
+        end
       end
     end
   end

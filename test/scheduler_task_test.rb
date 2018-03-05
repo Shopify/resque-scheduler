@@ -22,7 +22,7 @@ context 'Resque::Scheduler' do
   end
 
   test 'sending TERM to scheduler breaks out of poll_sleep' do
-    Resque::Scheduler.expects(:release_master_lock)
+    Resque::Scheduler.expects(:release_master_lock_if_master)
 
     @pid = Process.pid
     Thread.new do
@@ -34,8 +34,8 @@ context 'Resque::Scheduler' do
       Resque::Scheduler.run
     end
 
-    Resque::Scheduler.unstub(:release_master_lock)
-    Resque::Scheduler.release_master_lock
+    Resque::Scheduler.unstub(:release_master_lock_if_master)
+    Resque::Scheduler.release_master_lock_if_master
   end
 
   test 'can start successfully' do
@@ -54,7 +54,7 @@ context 'Resque::Scheduler' do
 
   test 'sending TERM to scheduler breaks out when poll_sleep_amount = 0' do
     Resque::Scheduler.poll_sleep_amount = 0
-    Resque::Scheduler.expects(:release_master_lock)
+    Resque::Scheduler.expects(:release_master_lock_if_master)
 
     @pid = Process.pid
     Thread.new do
@@ -66,7 +66,7 @@ context 'Resque::Scheduler' do
       Resque::Scheduler.run
     end
 
-    Resque::Scheduler.unstub(:release_master_lock)
-    Resque::Scheduler.release_master_lock
+    Resque::Scheduler.unstub(:release_master_lock_if_master)
+    Resque::Scheduler.release_master_lock_if_master
   end
 end

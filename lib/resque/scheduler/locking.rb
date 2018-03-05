@@ -66,16 +66,8 @@ module Resque
         master_lock.acquire! || master_lock.locked?
       end
 
-      def release_master_lock!
-        warn "#{self}\#release_master_lock! is deprecated because it does " \
-             "not respect lock ownership. Use #{self}\#release_master_lock " \
-             "instead (at #{caller.first}"
-
-        master_lock.release!
-      end
-
-      def release_master_lock
-        master_lock.release
+      def release_master_lock_if_master
+        master_lock.release_if_locked
       rescue Errno::EAGAIN, Errno::ECONNRESET, Redis::CannotConnectError
         @master_lock = nil
       end
