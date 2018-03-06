@@ -6,10 +6,7 @@ module Resque
     module Lock
       class Basic < Base
         def acquire!
-          if Resque.redis.setnx(key, value)
-            extend_lock!
-            true
-          end
+          Resque.redis.set(key, value, ex: timeout, nx: true)
         end
 
         def locked?

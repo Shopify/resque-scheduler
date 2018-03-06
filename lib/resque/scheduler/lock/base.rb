@@ -20,7 +20,7 @@ module Resque
         end
 
         def value
-          @value ||= [hostname, process_id].join(':')
+          [hostname, process_id].join(':')
         end
 
         # Returns true if you currently hold the lock.
@@ -47,9 +47,11 @@ module Resque
 
         def hostname
           local_hostname = Socket.gethostname
-          Socket.gethostbyname(local_hostname).first
-        rescue
-          local_hostname
+          @hostname ||= begin
+            Socket.gethostbyname(local_hostname).first
+          rescue
+            local_hostname
+          end
         end
 
         def process_id
