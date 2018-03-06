@@ -9,6 +9,10 @@ module Resque
         evalsha(:zpop, [key], [min, max, offset, count])
       end
 
+      def deleq(key, expected_value)
+        evalsha(:deleq, [key], [expected_value])
+      end
+
       def locked(lock_key, token, timeout)
         evalsha(:locked, [lock_key], [token, timeout])
       end

@@ -112,15 +112,9 @@ context 'Resque::Scheduler::Locking' do
     assert !@subject.master?, 'should not be master'
   end
 
-  test 'release_master_lock should delegate to master_lock' do
-    @subject.master_lock.expects(:release)
-    @subject.release_master_lock
-  end
-
-  test 'release_master_lock! should delegate to master_lock' do
-    @subject.expects(:warn)
-    @subject.master_lock.expects(:release!)
-    @subject.release_master_lock!
+  test 'release_master_lock_if_master should delegate to master_lock' do
+    @subject.master_lock.expects(:release_if_locked)
+    @subject.release_master_lock_if_master
   end
 end
 
@@ -150,7 +144,7 @@ context 'Resque::Scheduler::Lock::Basic' do
   end
 
   teardown do
-    @lock.release!
+    @lock.send(:release!)
   end
 
   test 'you should not have the lock if someone else holds it' do
@@ -176,7 +170,7 @@ context 'Resque::Scheduler::Lock::Basic' do
     assert @lock.acquire!, 'should have acquired the master lock'
     assert @lock.locked?, 'should be locked'
 
-    @lock.release!
+    @lock.release_if_locked
 
     assert !@lock.locked?, 'should not be locked'
   end
@@ -213,7 +207,7 @@ context 'Resque::Scheduler::Lock::Resilient' do
     end
 
     teardown do
-      @lock.release!
+      @lock.send(:release!)
     end
 
     test 'you should not have the lock if someone else holds it' do
@@ -250,7 +244,7 @@ context 'Resque::Scheduler::Lock::Resilient' do
       assert @lock.acquire!, 'should have acquired the master lock'
       assert @lock.locked?, 'should be locked'
 
-      @lock.release!
+      @lock.release_if_locked
 
       assert !@lock.locked?, 'should not be locked'
     end

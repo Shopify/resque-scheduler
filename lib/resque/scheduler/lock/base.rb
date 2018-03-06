@@ -28,17 +28,17 @@ module Resque
           raise NotImplementedError
         end
 
-        # Releases the lock.
-        def release!
-          Resque.redis.del(key) == 1
-        end
-
         # Releases the lock iff we own it
-        def release
-          locked? && release!
+        def release_if_locked
+          raise NotImplementedError
         end
 
         private
+
+        # Releases the lock unconditionally
+        def release!
+          Resque.redis.del(key) == 1
+        end
 
         # Extends the lock by `timeout` seconds.
         def extend_lock!

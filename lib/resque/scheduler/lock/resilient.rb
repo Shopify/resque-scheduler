@@ -13,6 +13,10 @@ module Resque
           Resque::Scheduler::Lua.locked(key, value, @timeout).to_i == 1
         end
 
+        def release_if_locked
+          Resque::Scheduler::Lua.deleq(key, value).to_i == 1
+        end
+
         def timeout=(seconds)
           if locked?
             @timeout = seconds
