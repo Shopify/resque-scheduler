@@ -15,7 +15,7 @@ jobs:
 
       # Run rspec in parallel
       - run: |
-          rake testing
+          REDIS_NAMESPACE_DEPRECATIONS=1 rake testing
 
       # Save test results for timing analysis
       - store_test_results:
