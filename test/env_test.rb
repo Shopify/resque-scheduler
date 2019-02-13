@@ -15,10 +15,15 @@ context 'Env' do
   test 'reconnects redis when background is true' do
     Process.stubs(:daemon)
     mock_redis_client = mock('redis_client')
-    mock_redis = mock('redis')
-    mock_redis.expects(:client).returns(mock_redis_client)
     mock_redis_client.expects(:reconnect)
-    Resque.expects(:redis).returns(mock_redis)
+
+    mock_redis = mock('redis')
+    mock_redis.expects(:_client).returns(mock_redis_client)
+
+    mock_redis_namespace = mock('redis_namespace')
+    mock_redis_namespace.expects(:redis).returns(mock_redis)
+
+    Resque.expects(:redis).returns(mock_redis_namespace)
     env = new_env(background: true)
     env.setup
   end

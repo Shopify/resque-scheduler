@@ -221,7 +221,7 @@ context 'Resque::Scheduler::Lock::Resilient' do
       assert @lock.acquire!
       assert @lock.locked?
 
-      Resque.redis.script(:flush)
+      Resque.redis.redis.script(:flush)
 
       assert @lock.locked?
       assert_false @lock.acquire!
